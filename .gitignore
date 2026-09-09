@@ -1,0 +1,10 @@
+bin/*.bpf.o
+src/bpf/include/vmlinux.h
+src/index.jsx
+.build/
+node_modules/
+notes.local.md
+
+# Demo GIFs are committed deliberately (the README references them), so assets/
+# is NOT ignored. This note exists because it was briefly untracked and
+# ambiguous.

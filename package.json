@@ -1,0 +1,8 @@
+{
+  "name": "sqlsnoop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "sqlsnoop — a yeet script.",
+  "dependencies": {}
+}
