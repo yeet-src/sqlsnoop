@@ -215,24 +215,84 @@ static __always_inline __u64 ikey(__u64 sock)
 	return sock ^ ((__u64)pid << 48);
 }
 
-// Pull the user-buffer base out of a msghdr's iov_iter. Modern kernels store
-// a single user buffer inline as ITER_UBUF (ptr in `ubuf`); a classic iovec
-// array is ITER_IOVEC (ptr in `__iov->iov_base`). Client writes land as
-// either depending on kernel version and how the client issues the write, so
-// both are handled. This is the one fragile read here, and it is the same
-// read mongosnoop and redissnoop make.
+// The pre-6.4 shape of `iov_iter`, declared locally.
+//
+// `bpf_core_field_exists()` only defers the CHECK to load time; the field
+// still has to exist at COMPILE time for the expression to typecheck. On a
+// 6.12 vmlinux.h there is no `msg_iter.iov` member, so referring to it
+// directly is a compile error even inside a guard.
+//
+// The idiom is to describe the old layout in a local struct marked
+// `preserve_access_index`, which tells clang to emit CO-RE relocations for
+// its fields. At load time the relocation resolves against the running
+// kernel's BTF if the field is there, and the guarded branch is dropped if it
+// is not. Only the members actually read need to be declared.
+struct iov_iter___pre64 {
+	__u8 iter_type;
+	const struct iovec *iov;
+} __attribute__((preserve_access_index));
+
+struct msghdr___pre64 {
+	struct iov_iter___pre64 msg_iter;
+} __attribute__((preserve_access_index));
+
+// Pull the user-buffer base out of a msghdr's iov_iter.
+//
+// THIS IS THE ONE PLACE THIS PROGRAM IS KERNEL-VERSION SENSITIVE, and it has
+// to be written with CO-RE feature detection rather than direct field reads.
+// The naive version cost a CI failure on 6.1 while passing on 6.6, 6.12 and
+// bpf-next, so the reasoning is worth keeping.
+//
+// Two things changed in 6.4, when ITER_UBUF was introduced:
+//
+//   1. `iov_iter` gained a `ubuf` member for the single-buffer case. On 6.1
+//      that field does not exist, so a direct `BPF_CORE_READ(msg,
+//      msg_iter.ubuf)` has no relocation target and the VERIFIER REJECTS THE
+//      WHOLE PROGRAM at load. Not a wrong value: a rejected program. Both
+//      programs that call this were rejected on 6.1 at 38 and 328,689
+//      instructions respectively, which is what proved the cause — a
+//      38-instruction program cannot be failing for complexity.
+//
+//   2. The `iter_type` VALUES SHIFTED. 6.4 and later have
+//      `ITER_UBUF = 0, ITER_IOVEC = 1`; before that `ITER_IOVEC = 0`. So the
+//      enum constants the compiler bakes in are wrong on the other side of
+//      that boundary even where the fields do exist, and comparing against
+//      them silently misreads the iterator type.
+//
+// `bpf_core_field_exists()` resolves both at load time: the branch reading
+// `ubuf` is only compiled in when the field is present in the running
+// kernel's BTF, and the type comparison uses the enum value CO-RE resolves
+// for that kernel rather than the one clang saw.
 static __always_inline const void *iter_base(struct msghdr *msg)
 {
 	__u8 itype = BPF_CORE_READ(msg, msg_iter.iter_type);
-	if (itype == ITER_UBUF)
-		return BPF_CORE_READ(msg, msg_iter.ubuf);
-	if (itype == ITER_IOVEC) {
-		const struct iovec *iov = BPF_CORE_READ(msg, msg_iter.__iov);
+
+	// The single-buffer case, 6.4 and later only. Guarded so the read is
+	// dropped entirely on a kernel whose `iov_iter` has no `ubuf`.
+	if (bpf_core_field_exists(msg->msg_iter.ubuf)) {
+		if (itype == bpf_core_enum_value(enum iter_type, ITER_UBUF))
+			return BPF_CORE_READ(msg, msg_iter.ubuf);
+	}
+
+	// The classic iovec array, present on every kernel in range. The member
+	// was renamed from `iov` to `__iov` in 6.4, so both spellings are tried.
+	if (itype == bpf_core_enum_value(enum iter_type, ITER_IOVEC)) {
+		const struct iovec *iov = NULL;
+		if (bpf_core_field_exists(msg->msg_iter.__iov)) {
+			iov = BPF_CORE_READ(msg, msg_iter.__iov);
+		} else {
+			// Pre-6.4: the member was called `iov`, reached through the
+			// locally-declared old layout above.
+			const struct msghdr___pre64 *old = (const void *)msg;
+			iov = BPF_CORE_READ(old, msg_iter.iov);
+		}
 		if (iov)
 			return BPF_CORE_READ(iov, iov_base);
 	}
+
 	return NULL;
 }
+
 
 
 // MySQL's 3-byte little-endian packet length.
