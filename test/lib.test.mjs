@@ -380,6 +380,22 @@ test("findingsFrom reports an N+1 burst once, not once per burst", () => {
   assert.match(nplus[0].label, /bursts/);
 });
 
+test("findingsFrom reads inlined literals when a driver binds nothing", () => {
+  // psycopg2 sends `... WHERE x = 17` as text with no Bind, so `values` is
+  // empty on every execution. A loop over rows must still read as a loop,
+  // not as the same query repeated, or the finding points at the wrong fix.
+  const loop = [];
+  for (let i = 0; i < 15; i++) loop.push(stmt({ sql: `SELECT id FROM t WHERE x = ${i}`, values: [] }));
+  const a = findingsFrom(loop.reverse()).find((x) => x.kind === "n+1");
+  assert.equal(a.subtype, "loop over rows");
+
+  clock += 60_000;
+  const same = [];
+  for (let i = 0; i < 15; i++) same.push(stmt({ sql: "SELECT id FROM t WHERE x = 7", values: [] }));
+  const b = findingsFrom(same.reverse()).find((x) => x.kind === "n+1");
+  assert.equal(b.subtype, "repeated identical query");
+});
+
 test("findingsFrom does not call interleaved traffic an N+1", () => {
   // Ten executions of a common lookup landing adjacent by coincidence, from
   // several threads. This produced false N+1s on `SELECT count(*)` and a

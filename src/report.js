@@ -14,10 +14,11 @@
 // model the TUI reads, so the attribution, the per-shape totals and the
 // findings are the ones the findings view would show.
 //
-// Parameter values are left out unless `--values` is passed. A shape, a count
-// and a latency answer every question this report exists for, and bound
-// values are routinely customer data that has no business in an agent's
-// transcript by default.
+// Parameter values, and the raw statement text that can carry them inline,
+// are left out unless `--values` is passed. A shape, a count and a latency
+// answer every question this report exists for, and bound values are
+// routinely customer data that has no business in an agent's transcript by
+// default.
 
 // Relative, not `@/`: this also runs unbundled, like probes/sql.js.
 import { Signal } from "yeet:signal";
@@ -100,13 +101,21 @@ function findingOf(f, withValues) {
     cost_ms: ms(f.costUs),
     executions: f.count ?? null,
     occurrences: f.occurrences ?? null,
+    // For an N+1, the size of the largest burst: the per-request count when
+    // one request runs one loop, which is the number people ask for first.
+    largest_burst: r.runCount ?? null,
     verb: r.verb ?? null,
     shape: r.shape ?? null,
-    sql: r.sql ?? null,
     process: r.comm ? proc(r) : null,
     tid: r.tid ?? null,
   };
-  if (withValues && r.valuesText) out.values = r.valuesText;
+  // The raw statement text only with --values: a driver that inlines its
+  // values (psycopg2, any simple-protocol client) carries them in the SQL
+  // itself, so the text is as sensitive as the bound values are.
+  if (withValues) {
+    out.sql = r.sql ?? null;
+    if (r.valuesText) out.values = r.valuesText;
+  }
   return out;
 }
 

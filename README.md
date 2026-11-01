@@ -262,7 +262,7 @@ yeet run gh:yeet-src/sqlsnoop -- --report --seconds 30
 yeet run gh:yeet-src/sqlsnoop -- --report --seconds 30 --tls-binary libssl.so
 ```
 
-Bound parameter values are left out unless you add `--values`, because they are often customer data. `--top N` caps the shape list (default 20). Connections must open while the capture runs: a pooled client that prepared its statements before the window sends executions that cite statements the capture never saw, and those are dropped rather than guessed. The report's `notes` say so when that is all it found.
+Bound parameter values, and the raw statement text (which carries them inline for drivers that send literals, such as psycopg2), are left out unless you add `--values`, because they are often customer data; the normalized `shape` is always there. An N+1 finding's `largest_burst` is the size of its biggest burst, which is the per-request count when one request runs one loop. `--top N` caps the shape list (default 20). Connections must open while the capture runs: a pooled client that prepared its statements before the window sends executions that cite statements the capture never saw, and those are dropped rather than guessed. The report's `notes` say so when that is all it found.
 
 For the raw stream, the data layer runs standalone and streams plain text:
 

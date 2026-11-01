@@ -122,7 +122,13 @@ export function findingsFrom(statements) {
       // rows from a repeated identical query, and it is the first thing
       // anyone asks about an N+1. Compared as rendered text, which is what
       // the reader would compare by eye.
-      const seen = new Set(members.map((m) => (m.values ?? []).map((v) => v.text).join("")));
+      //
+      // A driver that inlines its values (psycopg2 by default, most simple
+      // query protocol clients) binds nothing, so every member has empty
+      // values and a loop over 200 different ids looked like one query run
+      // 200 times. With no bound values the literals live in the statement
+      // text itself, so compare that instead.
+      const seen = new Set(members.map((m) => (m.values?.length ? m.values.map((v) => v.text).join("") : (m.sql ?? ""))));
       const distinct = seen.size;
 
       // TWO GUARDS against calling coincidence an N+1. With several
