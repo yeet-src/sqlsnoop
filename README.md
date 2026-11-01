@@ -253,13 +253,24 @@ The runnable statement is built only when every value decoded with certainty. Wh
 
 ## Reading it without a TTY
 
-A TUI is unreadable to an agent, a CI job, or a pipe. The data layer runs standalone and streams plain text:
+A TUI is unreadable to an agent, a CI job, or a pipe. Two paths are built for that.
+
+For an answer, capture a window and get one JSON object back: the findings view's findings, and every statement shape ranked by total time with its call count, latencies, errors and client processes.
+
+```sh
+yeet run gh:yeet-src/sqlsnoop -- --report --seconds 30
+yeet run gh:yeet-src/sqlsnoop -- --report --seconds 30 --tls-binary libssl.so
+```
+
+Bound parameter values are left out unless you add `--values`, because they are often customer data. `--top N` caps the shape list (default 20). Connections must open while the capture runs: a pooled client that prepared its statements before the window sends executions that cite statements the capture never saw, and those are dropped rather than guessed. The report's `notes` say so when that is all it found.
+
+For the raw stream, the data layer runs standalone and streams plain text:
 
 ```sh
 yeet run src/probes/sql.js
 ```
 
-It prints every statement, every parameter block and every reply as separate lines, which also makes it the right way to *see* the stitching problem rather than read about it. This is the path to use for verifying the probe works, and `yeet run .` will tell you to use it if you pipe the TUI.
+It prints every statement, every parameter block and every reply as separate lines, which also makes it the right way to *see* the stitching problem rather than read about it. This is the path to use for verifying the probe works, and `yeet run .` will point at both paths if you pipe the TUI.
 
 ## How it works
 

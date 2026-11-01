@@ -1002,11 +1002,13 @@ export const shapes = computed(() => {
 // Standalone correctness probe: dump raw joined statements so field names and
 // types are verifiable before any UI exists.
 //
-// Guarded on this module being the entry BY PATH, not on `import.meta.main`:
-// the bundle inlines this module into src/index.jsx, and there `import.meta`
-// belongs to the bundle — which IS the entry — so an `import.meta.main` guard
-// runs the dump loop instead of the TUI.
-const isEntry = /probes\/sql\.js$/.test(import.meta.url ?? "");
+// Guarded on BOTH the path and `import.meta.main`, because each alone is wrong
+// somewhere. The bundle inlines this module into src/index.jsx, and there
+// `import.meta` belongs to the bundle — which IS the entry — so `main` alone
+// runs the dump loop instead of the TUI. The path alone is wrong unbundled:
+// `import.meta.url` is this module's own URL whoever imports it, so a script
+// importing it (src/report.js) ran the dump loop and hung on its await.
+const isEntry = !!import.meta.main && /probes\/sql\.js$/.test(import.meta.url ?? "");
 
 if (isEntry) {
   const ctl = await load();

@@ -33,6 +33,7 @@ import {
 import { C } from "@/lib/theme.js";
 import { foldRuns } from "@/lib/fold.js";
 import { findingsFrom } from "@/lib/findings.js";
+import { runReport } from "@/report.js";
 import TitleBar from "@/components/titlebar.jsx";
 import Tabs from "@/components/tabs.jsx";
 import Feed from "@/components/feed.jsx";
@@ -260,23 +261,32 @@ const Bsod = ({ error }) => {
   );
 };
 
+// `--report`: capture for a window, print one JSON object, exit. It needs no
+// terminal, so it is checked before the TTY guard below, and it is reachable
+// from the main entry because `yeet run github:…` cannot name a file.
+const REPORT = !!(yeet.args?.report || yeet.args?.json);
+
 // A TUI needs a terminal. `mount()` reaches for `tty` internally, so a run
 // whose output is piped or redirected cannot render at all — and the raw
 // failure is an unhelpful "ReferenceError: tty is not defined" from inside
-// the runtime. Say what actually happened, and point at the probe module,
-// which is the line-mode path built for exactly this case.
-if (!TTY) {
+// the runtime. Say what actually happened, and point at the line-mode paths
+// built for exactly this case.
+if (REPORT) {
+  runReport();
+} else if (!TTY) {
   console.log("sqlsnoop needs a terminal: its output is a live TUI, and this run has no TTY");
   console.log("(output is piped or redirected — run it directly, or record with script/asciinema)");
   console.log("");
+  console.log("For one JSON report of a capture window (findings and per-statement totals):");
+  console.log("  yeet run . -- --report --seconds 30");
   console.log("For a pipeable, line-at-a-time stream of the same capture, run the probe instead:");
   console.log("  yeet run src/probes/sql.js");
   yeet.exit();
-}
-
-try {
-  mount(Root);
-} catch (e) {
-  mount(() => <Bsod error={e} />);
+} else {
+  try {
+    mount(Root);
+  } catch (e) {
+    mount(() => <Bsod error={e} />);
+  }
 }
 await new Promise(() => {});
